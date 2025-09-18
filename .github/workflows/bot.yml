@@ -43,10 +43,6 @@ jobs:
         # Set permissions for all engines
         echo "🔧 Setting engine permissions..."
         chmod +x engines/stockfish
-        chmod +x engines/fairy-stockfish_x86-64-bmi2
-        chmod +x engines/ShashChess39
-        chmod +x engines/sf
-
         # Verify engines
         echo "📋 Listing engines:"
         ls -la engines/
