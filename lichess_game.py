@@ -95,6 +95,10 @@ class Lichess_Game:
         suffixes.append('white' if is_white else 'black')
         suffixes.append('rated' if game_info.rated else 'casual')
 
+        opponent_name = game_info.black_name if is_white else game_info.white_name
+        if opponent_name:  
+            suffixes.append(opponent_name.lower())
+
         def check_engine_key(base_name: str) -> str | None:
             for i in range(len(suffixes), -1, -1):
                 for p in itertools.permutations(suffixes, i):
