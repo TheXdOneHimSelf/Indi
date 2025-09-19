@@ -94,6 +94,10 @@ class Lichess_Game:
         suffixes.append('human' if game_info.opponent_is_human else 'bot')
         suffixes.append('white' if is_white else 'black')
         suffixes.append('rated' if game_info.rated else 'casual')
+        
+        opponent_name = game_info.black_name if is_white else game_info.white_name
+        if opponent_name:  
+            suffixes.append(opponent_name.lower())
 
         def check_engine_key(base_name: str) -> str | None:
             for i in range(len(suffixes), -1, -1):
@@ -833,142 +837,4 @@ class Lichess_Game:
         info_depth = info.get('depth')
         info_seldepth = info.get('seldepth')
         depth_str = f'{info_depth}/{info_seldepth}'
-        depth = f'{depth_str:6}' if info_depth and info_seldepth else 6 * ' '
-
-        info_nodes = info.get('nodes')
-        nodes = f'Nodes: {self._format_number(info_nodes)}' if info_nodes else 14 * ' '
-
-        info_nps = info.get('nps')
-        nps = f'NPS: {self._format_number(info_nps)}' if info_nps else 12 * ' '
-
-        if info_time := info.get('time'):
-            minutes, seconds = divmod(round(info_time, 1), 60)
-            time_str = f'MT: {minutes:02.0f}:{seconds:004.1f}'
-        else:
-            time_str = 11 * ' '
-
-        info_hashfull = info.get('hashfull')
-        hashfull = 13 * ' ' if info_hashfull is None else f'Hash: {info_hashfull / 10:5.1f} %'
-
-        info_tbhits = info.get('tbhits')
-        tbhits = f'TB: {self._format_number(info_tbhits)}' if info_tbhits else ''
-        delimiter = 5 * ' '
-
-        return delimiter.join((score, depth, nodes, nps, time_str, hashfull, tbhits))
-
-    def _format_number(self, number: int) -> str:
-        units: list[tuple[str, int, int]] = [
-            ('T', 1_000_000_000_000, 999_950_000_000),
-            ('G', 1_000_000_000, 999_950_000),
-            ('M', 1_000_000, 999_950),
-            ('k', 1_000, 1_000)
-        ]
-
-        for suffix, value, threshold in units:
-            if number >= threshold:
-                return f'{number / value:5.1f} {suffix}'
-
-        return f'{number:5}  '
-
-    def _format_score(self, score: chess.engine.PovScore) -> str:
-        if not score.is_mate():
-            if cp_score := score.pov(self.board.turn).score():
-                cp_score /= 100
-                return format(cp_score, '+7.2f')
-
-            return '   0.00'
-
-        return str(score.pov(self.board.turn))
-
-    def _format_egtb_info(self, outcome: str, dtz: int | None = None, dtm: int | None = None) -> str:
-        outcome_str = f'{outcome:>7}'
-        dtz_str = f'DTZ: {dtz}' if dtz else ''
-        dtm_str = f'DTM: {dtm}' if dtm else ''
-        delimiter = 5 * ' '
-
-        return delimiter.join(filter(None, [outcome_str, dtz_str, dtm_str]))
-
-    def _format_book_info(self, weight: float, learn: int) -> str:
-        output = f'{weight:>5.0f} %'
-        if learn:
-            output += f'     Performance: {learn >> 20}'
-            win = (learn >> 10 & 0b1111111111) / 10.2
-            draw = (learn & 0b1111111111) / 10.2
-            loss = max(100.0 - win - draw, 0.0)
-            output += f'     WDL: {win:5.1f} % {draw:5.1f} % {loss:5.1f} %'
-
-        return output
-
-    def _get_move_sources(self) -> list[Callable[[], Awaitable[Move_Response | None]]]:
-        move_sources: list[Callable[[], Awaitable[Move_Response | None]]] = []
-
-        if self.config.gaviota.enabled:
-            if self.board.uci_variant == 'chess':
-                move_sources.append(self._make_gaviota_move)
-
-        if self.syzygy_config.enabled and self.syzygy_config.instant_play:
-            move_sources.append(self._make_syzygy_move)
-
-        if self.config.online_moves.online_egtb.enabled:
-            if self.board.uci_variant in ['chess', 'antichess', 'atomic']:
-                move_sources.append(self._make_egtb_move)
-
-        opening_sources: dict[Callable[[], Awaitable[Move_Response | None]], int] = {}
-
-        if self.config.opening_books.enabled:
-            opening_sources[self._make_book_move] = self.config.opening_books.priority
-
-        opening_explorer_config = self.config.online_moves.opening_explorer
-        if opening_explorer_config.enabled:
-            if not opening_explorer_config.only_without_book or not self.book_settings.readers:
-                if self.board.uci_variant == 'chess' or opening_explorer_config.use_for_variants:
-                    opening_sources[self._make_opening_explorer_move] = opening_explorer_config.priority
-
-        if self.config.online_moves.lichess_cloud.enabled:
-            if not self.config.online_moves.lichess_cloud.only_without_book or not self.book_settings.readers:
-                if self.board.uci_variant == 'chess' or self.config.online_moves.lichess_cloud.use_for_variants:
-                    opening_sources[self._make_cloud_move] = self.config.online_moves.lichess_cloud.priority
-
-        if self.config.online_moves.chessdb.enabled:
-            if not self.config.online_moves.chessdb.only_without_book or not self.book_settings.readers:
-                if self.board.uci_variant == 'chess':
-                    opening_sources[self._make_chessdb_move] = self.config.online_moves.chessdb.priority
-
-        move_sources += [opening_source
-                         for opening_source, _
-                         in sorted(opening_sources.items(), key=lambda item: item[1], reverse=True)]
-
-        return move_sources
-
-    def _get_move_overhead(self, engine_config: Engine_Config) -> float:
-        return max(self.game_info.initial_time_ms / 60_000 * engine_config.move_overhead_multiplier, 1.0)
-
-    def _has_time(self, min_time: float) -> bool:
-        if len(self.board.move_stack) < 2:
-            return True
-
-        if not self.increment:
-            min_time += 10.0
-
-        return self.own_time >= min_time
-
-    def _reduce_own_time(self, seconds: float) -> None:
-        if len(self.board.move_stack) < 2:
-            return
-
-        if self.is_white:
-            self.white_time -= seconds
-        else:
-            self.black_time -= seconds
-
-    def _is_repetition(self, move: chess.Move) -> bool:
-        board = self.board.copy()
-        board.push(move)
-        return board.is_repetition(count=2)
-
-    def _has_mate_score(self) -> bool:
-        if not self.scores:
-            return False
-
-        mate = self.scores[-1].relative.mate()
-        return mate is not None and mate > 0
+        depth = f'{depth_str:6}' if info_depth and info_seldepth else
