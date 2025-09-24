@@ -370,6 +370,11 @@ class Lichess_Game:
         suffixes.append('white' if self.is_white else 'black')
         suffixes.append('rated' if self.game_info.rated else 'casual')
 
+        if self.game_info.starting_fen != chess.STARTING_FEN:
+            suffixes.append('from_position')
+
+        return '_'.join(suffixes) if suffixes else None
+  
         def check_book_key(base_name: str) -> str | None:
             for i in range(len(suffixes), -1, -1):
                 for p in itertools.permutations(suffixes, i):
