@@ -369,9 +369,6 @@ class Lichess_Game:
         suffixes.append('human' if self.game_info.opponent_is_human else 'bot')
         suffixes.append('white' if self.is_white else 'black')
         suffixes.append('rated' if self.game_info.rated else 'casual')
-
-        if self.game_info.starting_fen != chess.STARTING_FEN:
-            suffixes.append("frompostion")
   
         def check_book_key(base_name: str) -> str | None:
             for i in range(len(suffixes), -1, -1):
